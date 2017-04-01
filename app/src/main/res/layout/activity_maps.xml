@@ -27,4 +27,21 @@
         android:textSize="18sp"
         android:id="@+id/accuracy"
         />
+
+    <ListView
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:id="@+id/list"
+        />
+
+    <ImageView
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:src="@android:drawable/ic_menu_add"
+        android:tint="@color/colorPrimary"
+        android:layout_gravity="right"
+        android:id="@+id/add"
+        android:layout_margin="16dp"
+        />
+
 </FrameLayout>

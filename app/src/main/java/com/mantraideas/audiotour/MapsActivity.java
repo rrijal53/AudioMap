@@ -3,6 +3,7 @@ package com.mantraideas.audiotour;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
@@ -11,11 +12,21 @@ import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
+import android.support.v7.app.AlertDialog;
 import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.Interpolator;
 import android.view.animation.LinearInterpolator;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.ListView;
 import android.widget.TextView;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -43,15 +54,21 @@ import com.google.android.gms.maps.model.PolylineOptions;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, View.OnClickListener {
 
     private GoogleMap mMap;
-    List<LatLng> list;
+    List<Landmarks> list;
     protected GoogleApiClient mGoogleApiClient;
     protected Location mLastLocation;
     TextView accuracy;
     LocationRequest mLocationRequest;
     Marker mPositionMarker;
+    PolylineOptions op;
+    ListView listView;
+    ImageView add;
+    ArrayAdapter<Landmarks> adapter;
+    DatabaseHelper db;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,13 +76,24 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         if (!checkPermission(this)) {
             showPermissionDialog();
         }
+        db = new DatabaseHelper(this);
+        listView = (ListView) findViewById(R.id.list);
+        add = (ImageView) findViewById(R.id.add);
+        add.setOnClickListener(this);
         accuracy = (TextView) findViewById(R.id.accuracy);
         list = new ArrayList<>();
-        list.add(new LatLng(27.682622, 85.337940));
-        list.add(new LatLng(27.682531, 85.338068));
-        list.add(new LatLng(27.682479, 85.338143));
-        list.add(new LatLng(27.682617, 85.338427));
-        list.add(new LatLng(27.682867, 85.338981));
+        list.addAll(db.getLandmarks());
+        adapter = new ArrayAdapter<Landmarks>(this, android.R.layout.simple_list_item_1, android.R.id.text1, list) {
+            @NonNull
+            @Override
+            public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
+               TextView v = (TextView) super.getView(position, convertView, parent);
+                v.setText(list.get(position).title +"");
+                return v;
+            }
+        };
+        listView.setAdapter(adapter);
+        op = new PolylineOptions();
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
@@ -92,24 +120,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-
-        final PolylineOptions op = new PolylineOptions();
-        op.addAll(list);
+        for (int i = 0; i < list.size(); i++) {
+            op.add(new LatLng(list.get(i).geo_lat, list.get(i).geo_lng));
+        }
         op.width(10);
         op.color(Color.BLUE);
         for (int i = 0; i < list.size(); i++) {
-            MarkerOptions o = new MarkerOptions().title((i + 1) + "").position(list.get(i));
+            MarkerOptions o = new MarkerOptions().title((i + 1) + "").position(new LatLng(list.get(i).geo_lat, list.get(i).geo_lng));
             o.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
             Marker m = mMap.addMarker(o);
             m.setTitle("Title");
             m.setIcon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher));
-            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(list.get(i), 18));
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(list.get(i).geo_lat, list.get(i).geo_lng), 18));
         }
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             showPermissionDialog();
         }
 
-//        mMap.setMyLocationEnabled(true);
         mMap.addPolyline(op);
     }
 
@@ -130,15 +157,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         locationRequest.setInterval(1000);
         LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
                 .addLocationRequest(locationRequest);
-        builder.setAlwaysShow(true); //this is the key ingredient
-        //**************************
+        builder.setAlwaysShow(true);
         PendingResult<LocationSettingsResult> result =
                 LocationServices.SettingsApi.checkLocationSettings(mGoogleApiClient, builder.build());
         result.setResultCallback(new ResultCallback<LocationSettingsResult>() {
             @Override
             public void onResult(LocationSettingsResult result) {
                 final Status status = result.getStatus();
-                final LocationSettingsStates state = result.getLocationSettingsStates();
+                result.getLocationSettingsStates();
                 switch (status.getStatusCode()) {
                     case LocationSettingsStatusCodes.SUCCESS:
                         break;
@@ -148,7 +174,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             status.startResolutionForResult(
                                     MapsActivity.this, 1000);
                         } catch (IntentSender.SendIntentException e) {
-                            // Ignore the error.
                         }
                         break;
                     case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
@@ -168,7 +193,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             if (resultCode == Activity.RESULT_OK) {
                 buildGoogleApiClient();
                 if (mGoogleApiClient.isConnecting()) {
-                    //showSnackBar("Location Service is been connecting please wait.");
                 }
             }
         }
@@ -190,7 +214,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             if (location == null)
                                 return;
                             accuracy.setText("Location Accuracy : " + location.getAccuracy() + "M");
-                            Log.d("ROWSUN", "onLocationChanged: :" + location.getLatitude() + " " + location.getLongitude() );
+                            Log.d("ROWSUN", "onLocationChanged: :" + location.getLatitude() + " " + location.getLongitude());
                             if (mPositionMarker == null) {
 
                                 mPositionMarker = mMap.addMarker(new MarkerOptions()
@@ -203,8 +227,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                                         .getLongitude())));
                             }
 
-                            animateMarker(mPositionMarker, location); // Helper method for smooth
-                            // animation
+                            animateMarker(mPositionMarker, location);
 
                             mMap.animateCamera(CameraUpdateFactory.newLatLng(new LatLng(location
                                     .getLatitude(), location.getLongitude())));
@@ -215,7 +238,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             buildGoogleApiClient();
         }
     }
-
 
 
     public void animateMarker(final Marker marker, final Location location) {
@@ -288,4 +310,49 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     public void onConnectionFailed(ConnectionResult connectionResult) {
     }
 
+    @Override
+    public void onClick(View v) {
+        if (v.getId() == R.id.add) {
+            showAlert();
+        }
+    }
+
+    private void showAlert() {
+        if (mLastLocation != null) {
+            View v_alert = LayoutInflater.from(this).inflate(R.layout.alert_input, null);
+            final EditText t = (EditText) v_alert.findViewById(R.id.title);
+            final EditText t1 = (EditText) v_alert.findViewById(R.id.lat);
+            final EditText t2 = (EditText) v_alert.findViewById(R.id.lng);
+            t1.setText(mLastLocation.getLatitude() + "");
+            t2.setText(mLastLocation.getLongitude() + "");
+            new AlertDialog.Builder(this).setTitle("Add Landmark:").setView(v_alert).setPositiveButton("Add", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    String title = t.getText().toString();
+                    Double lat = Double.parseDouble(t1.getText().toString());
+                    Double lng = Double.parseDouble(t2.getText().toString());
+                    if (title.isEmpty()) {
+                        Utilities.toast(MapsActivity.this, "Invalid title");
+                        return;
+                    }
+                    if (lat.isNaN()) {
+                        Utilities.toast(MapsActivity.this, "Invalid Lat");
+                        return;
+
+                    }
+                    if (lat.isNaN()) {
+                        Utilities.toast(MapsActivity.this, "Invalid Lng");
+                        return;
+
+                    }
+                    Landmarks l = new Landmarks(title, lat, lng);
+                    db.addLandmark(l);
+                    list.add(l);
+                    op.add(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()));
+                    mMap.addPolyline(op);
+                    adapter.notifyDataSetChanged();
+                }
+            }).setNegativeButton("Cancel", null).show();
+        }
+    }
 }
